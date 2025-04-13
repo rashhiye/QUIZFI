@@ -1,0 +1,410 @@
+import 'package:flutter/material.dart';
+import 'package:myapp/pages/server/roomsettings.dart';
+import 'dart:io';
+import 'package:network_info_plus/network_info_plus.dart';
+import 'package:myapp/themes/dark.dart';
+import 'package:myapp/pages/server/hive_manager.dart';
+
+bool _isListening = false;
+
+class CreateRoomScreen extends StatefulWidget {
+  const CreateRoomScreen({super.key});
+  static ServerSocket? _serverSocket;
+  static final List<Socket> _clients = [];
+  
+  @override
+  _CreateRoomScreenState createState() => _CreateRoomScreenState();
+}
+
+bool sc = false;
+String score = '';
+
+class _CreateRoomScreenState extends State<CreateRoomScreen> {
+  TextEditingController ipc = TextEditingController();
+  String status = '';
+  bool start = true;
+  bool add = true;
+  static final List<String> _messages = [];
+  String? ip = '';
+  final int port = 3000;
+  List<Player> _players = [];
+
+  Future<void> startServer() async {
+    try {
+      await getLocalIpAddress();
+      CreateRoomScreen._serverSocket = await ServerSocket.bind(ip, port);
+      startListening();
+    } catch (e) {
+      setState(() {
+        status = 'Could not start server: $e';
+        Future.delayed(const Duration(seconds: 2), () {
+          setState(() {
+            status = '';
+          });
+        });
+      });
+    }
+  }
+
+  void startListening() {
+    if (CreateRoomScreen._serverSocket == null) return;
+    _isListening = true;
+    CreateRoomScreen._serverSocket!.listen((client) {
+      print('hi');
+      if (_isListening) {
+        CreateRoomScreen._clients.add(client);
+        client.listen(
+          (data) {
+            final message = String.fromCharCodes(data).trim();
+            if (_isListening) {
+              setState(() {
+                HiveManager.addPlayer(
+                  message, client.remoteAddress.address
+                );
+                _players = HiveManager.getAllPlayers();
+                _messages.add(
+                    '$message ${client.remoteAddress.address}:${client.remotePort}');
+              });
+              client.write('connected to server');
+            } else {
+              score = message;
+            }
+            // } else {
+            //   status = 'Game started ,No entry';
+            //   setState(() {});
+            //   Future.delayed(Duration(seconds: 2), () {
+            //     setState(() {
+            //       status = '';
+            //     });
+            //   });
+            // }
+          },
+          onError: (error) {
+            setState(() {
+              CreateRoomScreen._clients.remove(client);
+              status = 'Error: $error';
+              Future.delayed(const Duration(seconds: 2), () {
+                setState(() {
+                  status = '';
+                });
+              });
+            });
+          },
+          onDone: () {
+            setState(() {
+              CreateRoomScreen._clients.remove(client);
+              status = 'Client disconnected';
+              print('stop listening');
+              Future.delayed(const Duration(seconds: 2), () {
+                setState(() {
+                  status = '';
+                  CreateRoomScreen._clients.remove(client);
+                });
+              });
+            });
+          },
+        );
+      }
+    });
+    setState(() {});
+    Future.delayed(const Duration(seconds: 2), () {
+      setState(() {
+        status = '';
+      });
+    });
+  }
+
+  Future<void> getLocalIpAddress() async {
+    final info = NetworkInfo();
+    ip = await info.getWifiIP();
+    setState(() {
+      ipc.text = ip.toString();
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _isListening = false;
+    _messages.clear();
+    startServer();
+  }
+
+  @override
+  void dispose() {
+    CreateRoomScreen._serverSocket?.close();
+    for (var client in CreateRoomScreen._clients) {
+      client.destroy();
+    }
+    _isListening = false;
+    _messages.clear();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double screenwidth = MediaQuery.of(context).size.width;
+    double screenheight = MediaQuery.of(context).size.height;
+    Color col = fgColor;
+    return Scaffold(
+      backgroundColor: bgColor, // Light purple background
+      appBar: AppBar(
+        backgroundColor: col, // Make AppBar transparent
+        elevation: 0, // Remove shadow
+        title: const Text('Room Settings',
+            style: TextStyle(
+              fontSize: 30,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            )),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(30),
+            bottomRight: Radius.circular(30),
+          ),
+        ),
+        centerTitle: true,
+        iconTheme: IconThemeData(
+          color: wht, // Set the color of the back button
+        ),
+        // Title text
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              "Enable your hotspot to allow players to connect. And use this id to join ",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: screenwidth * 0.055,
+                  fontFamily: 'Paul',
+                  fontWeight: FontWeight.w600,
+                  color: blk),
+            ),
+          ),
+
+          SizedBox(
+            height: screenheight * 0.075,
+            width: screenwidth - 20,
+            child: Text(
+              ip.toString(),
+              style: TextStyle(
+                fontSize: screenwidth * 0.07,
+                fontWeight: FontWeight.w600,
+                color: col,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            /*TextField(
+              controller: ipc,
+              readOnly: true,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 25,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+              decoration: InputDecoration(
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+                    fillColor: col,
+                    filled: true,
+              ),
+            ) ,*/
+          ),
+          Text(
+            status,
+            textAlign: TextAlign.left,
+            style: const TextStyle(color: Colors.red),
+          ),
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: wht,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Header for the Player List
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(16)),
+                      gradient: LinearGradient(
+                        colors: [fgColor, ltfg],
+                      ),
+                    ),
+                    child: Text(
+                      "Players Information",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: wht,
+                        fontFamily: 'Paul',
+                      ),
+                    ),
+                  ),
+                  // Scrollable List
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(10),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) {
+                        return Card(
+                          elevation: 3,
+                          margin: const EdgeInsets.symmetric(
+                              vertical: 6, horizontal: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListTile(
+                            leading: Icon(Icons.person, color: col),
+                            title: Text(
+                              _messages[index],
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: fgColor,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(10),
+                      itemCount: _players.length,
+                      itemBuilder: (context, index) {
+                        return Card(
+                          elevation: 3,
+                          margin: const EdgeInsets.symmetric(
+                              vertical: 6, horizontal: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListTile(
+                            leading: Icon(Icons.person, color: col),
+                            title: Text(
+                              _players[index].name,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: fgColor,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Start Button
+          GestureDetector(
+            onTap: () {
+              _isListening = false; //start = false;
+              setState(() {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const Roomsettings()),
+                );
+              });
+            },
+            child: Container(
+              width: 200,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [fgColor, ltfg],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: fgColor.withOpacity(0.5),
+                    blurRadius: 15,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Text(
+                "START",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Orbitron',
+                  color: wht,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+}
+
+void S_send(String msg) {
+  for (var client in CreateRoomScreen._clients) {
+    client.write(msg);
+  }
+}
+
+String S_receive() {
+  sc = true;
+  return (score);
+}
+
+void resume() {
+  print('resume');
+  if (CreateRoomScreen._serverSocket != null && !_isListening) {
+    _isListening = true;
+  }
+}
+
+
+
+
+  // fetchScore() async {
+  //   String sc = '';
+  //   while (!HiveManager.checkback()) {
+  //     await Future.delayed(const Duration(
+  //         seconds:
+  //             1)); // delete this line and indroduce ore check here not in hive
+  //     sc = S_receive();
+  //     print('$sc');
+  //     setState(() {
+  //       status = '$sc';
+  //     });
+  //     if (sc != '') {
+  //       List<String> score = sc.split(':');
+  //       final playerIndex =
+  //           _players.indexWhere((player) => player.ip == score[5].trim());
+  //       setState(() async {
+  //         data = await HiveManager.updatePlayerScore(playerIndex, sc);
+  //         refreshPlayerList();
+  //       });
+  //     }
+  //   }
+  // }

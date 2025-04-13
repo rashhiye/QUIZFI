@@ -1,0 +1,291 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:animated_toggle/animated_toggle.dart';
+import 'package:myapp/pages/quickplay/singleplay.dart';
+import 'package:myapp/pages/loadingpage.dart';
+import 'package:myapp/themes/dark.dart';
+
+class Quickplay extends StatefulWidget {
+  const Quickplay({super.key});
+
+  @override
+  State<Quickplay> createState() => _QuickplayState();
+}
+
+class _QuickplayState extends State<Quickplay> {
+  String _selectedDifficulty = 'Easy';
+  final List<String> _difficulty = ['Easy', 'Medium', 'Hard'];
+  int _selectedduration = 10;
+  final List<String> _duration = ['5', '10', '15', '20'];
+  final List<int> _NQuestions =
+      List<int>.from(Iterable<int>.generate(10, (index) => index + 1));
+  String? _selectedQuestions = '1';
+
+  final TextEditingController _content = TextEditingController();
+  String str =
+      '1: Question 1?\nA. BoptionA\nB. 1optionB\nC. 1optionC\nD. 1optionD\nAnswer: D\n\n2: Question2?\nA. 2optionA\nB. 2optionB\nC. 2optionC\nD. 2optionD\nAnswer: C\n\n3: Question3?\nA. 3optionA\nB. 3optionB\nC. 3optionC\nD. 3optionD\nAnswer: A\n\n4: Question 4?\nA. 4optionA\nB. 4optionB\nC. 4optionC\nD. 4optionD\nAnswer: B\n\n5: Question 5?\nA. 5optionA\nB. 5optionB\nC. 5optionC\nD. 5optionD\nAnswer: D';
+  final ourUrl =
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyDuB9rSKCnjUDhnHZYXS6BBgA8X9miIMiY";
+  final header = {'Content-Type': 'application/json'};
+
+  getData() async {
+    LoadingDialog.show(context);
+    if (_content.text == '') {
+      LoadingDialog.hide(context);
+      LoadingDialog.error(context,
+          err: "Quiz generation is not possible without topic");
+      return;
+    }
+    var data = {
+      "contents": [
+        {
+          "parts": [
+            {
+              "text":
+                  "Write $_selectedQuestions $_selectedDifficulty quiz questions about ${_content.text}\nIn the given format\n[Question_no]:[Question]\nA. [option a]\nB. [option b]\nC. [option c]\nD. [option d]\nAnswer: [answer option (A,B,C,D)]"
+            }
+          ]
+        }
+      ]
+    };
+    await http
+        .post(Uri.parse(ourUrl), headers: header, body: jsonEncode(data))
+        .then((value) {
+      if (value.statusCode == 200) {
+        var result = jsonDecode(value.body);
+        print(result);
+        str = result["candidates"][0]["content"]["parts"][0]["text"];
+        print(str);
+        if (str == '' || !str.contains("1:")) {
+          LoadingDialog.hide(context);
+          if (str.contains("1"))
+            LoadingDialog.error(context,
+                err: "Question generation failed.try again after some time");
+          else
+            LoadingDialog.error(context,
+                err:
+                    "Question generation failed.try again after some time\n$str");
+        } else if (["$_selectedQuestions:", "A.", "B.", "C.", "D."]
+            .every((sub) => str.contains(sub))) {
+          LoadingDialog.hide(context);
+          int index = str.indexOf("1:");
+          String strr = index != -1 ? str.substring(index) : "";
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => Question(
+                    strr: strr,
+                    size: int.parse(_selectedQuestions ?? "1"),
+                    duration: _selectedduration)),
+          );
+        } else {
+          LoadingDialog.hide(context);
+          LoadingDialog.error(context,
+              err:
+                  "something went wrong in question generation. try again after some time");
+        }
+      } else {
+        print("Error occurred${value.statusCode}");
+      }
+    }).catchError((e) {
+      LoadingDialog.hide(context);
+      List<String> msg = e.toString().split(" ");
+      if (msg[0] == "ClientException") {
+        LoadingDialog.error(context,
+            err:
+                "Network Eror: Unable generate question due to poor network. Check the internet connectivity and try again");
+      } else {
+        LoadingDialog.error(context, err: e.toString());
+      }
+    });
+
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Color col = fgColor;
+    return Scaffold(
+      backgroundColor: bgColor, // Light purple background
+      appBar: AppBar(
+        backgroundColor: col, // Make AppBar transparent
+        elevation: 0, // Remove shadow
+        title: const Text('Quiz Generation',
+            style: TextStyle(
+              fontSize: 30,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            )),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(30),
+            bottomRight: Radius.circular(30),
+          ),
+        ),
+        centerTitle: true,
+        iconTheme: IconThemeData(
+          color: wht, // Set the color of the back button
+        ),
+        // Title text
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(25),
+        children: [
+          const SizedBox(height: 15),
+          Text(
+            "Topic",
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: fgColor),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _content,
+            decoration: InputDecoration(
+              hintText: 'Enter The Topic',
+              hintStyle: TextStyle(
+                color: fgColor,
+                fontSize: 16,
+              ),
+              filled: true,
+              fillColor: wht,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: ltfg, width: 1),
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: ltfg, width: 1),
+              ),
+            ),
+            style: TextStyle(
+              color: fgColor,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 30),
+          Text("Difficulty",
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.bold, color: fgColor)),
+          Center(
+            child: AnimatedHorizontalToggle(
+              taps: _difficulty,
+              width: MediaQuery.of(context).size.width - 40,
+              height: 50,
+              duration: const Duration(milliseconds: 100),
+              activeColor: fgColor,
+              background: ltfg,
+              inActiveTextStyle: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: wht,
+              ),
+              activeVerticalPadding: 4,
+              activeHorizontalPadding: 4,
+              onChange: (currentIndex, targetIndex) {
+                setState(() {
+                  _selectedDifficulty = _difficulty[currentIndex];
+                });
+              },
+            ),
+          ),
+          const SizedBox(height: 30),
+          Text("No. of Question",
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.bold, color: fgColor)),
+          DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              filled: true, // Enable filling for the background color
+              fillColor: wht, // Background color
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: ltfg, width: 2),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: ltfg, width: 1),
+              ),
+            ),
+            hint: Text('Choose No of Question',
+                style: TextStyle(
+                  color: fgColor,
+                )),
+            value: _selectedQuestions,
+            items: _NQuestions.map((num) {
+              return DropdownMenuItem(
+                  value: num.toString(), child: Text(num.toString()));
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedQuestions = value;
+              });
+            },
+          ),
+          const SizedBox(height: 30),
+          Text("Question duration",
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.bold, color: fgColor)),
+          Center(
+            child: AnimatedHorizontalToggle(
+              initialIndex: 1,
+              taps: _duration,
+              width: MediaQuery.of(context).size.width - 40,
+              height: 50,
+              duration: const Duration(milliseconds: 100),
+              activeColor: fgColor,
+              background: ltfg,
+              inActiveTextStyle: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: wht,
+              ),
+              activeVerticalPadding: 4,
+              activeHorizontalPadding: 4,
+              onChange: (currentIndex, targetIndex) {
+                setState(() {
+                  _selectedduration = int.parse(_duration[currentIndex]);
+                  print(_selectedduration);
+                });
+              },
+            ),
+          ),
+          const SizedBox(height: 50),
+          Center(
+              child: GestureDetector(
+            onTap: () {
+              getData();
+            },
+            child: Container(
+              width: 200,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [fgColor, ltfg],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: fgColor.withOpacity(0.5),
+                    blurRadius: 15,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Text(
+                "START",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Orbitron',
+                  color: wht,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+}
